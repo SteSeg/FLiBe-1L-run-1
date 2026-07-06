@@ -3,7 +3,7 @@ from openmc.deplete import d1s
 from libra_toolbox.neutronics import vault
 from libra_toolbox.neutronics.neutron_source import A325_generator_diamond
 from libra_toolbox.neutronics.materials import *
-from libra_toolbox.neutronics.materials import Flibe_nat, Flibe_solid
+from libra_toolbox.neutronics.materials import Flibe_nat, Flibe_solid, Flibe_solid_li
 
 
 def baby_geometry(x_c: float, y_c: float, z_c: float):
@@ -292,7 +292,7 @@ def baby_geometry(x_c: float, y_c: float, z_c: float):
     alumina_cell = openmc.Cell(region=alumina_region)
     alumina_cell.fill = Alumina
     cllif_cell = openmc.Cell(region=cllif_region)
-    cllif_cell.fill = Flibe_solid  # Cllif or lithium_lead
+    cllif_cell.fill = Flibe_solid_li  # Cllif or lithium_lead
     gap_cell = openmc.Cell(region=gap_region)
     gap_cell.fill = Helium
     cap_cell = openmc.Cell(region=cap_region)
@@ -365,7 +365,8 @@ def baby_model():
         Epoxy,
         Helium,
         HDPE,
-        Flibe_solid
+        Flibe_solid,
+        Flibe_solid_li
     ]
 
     # BABY coordinates
@@ -406,29 +407,29 @@ def baby_model():
     # Specify Tallies
     tallies = openmc.Tallies()
 
-    # mesh
-    photon_filter = openmc.ParticleFilter(["photon"])
-    mesh = openmc.RegularMesh()
-    mesh.lower_left = (0, 0, 0)
-    mesh.upper_right = (1000, 500, 300)
-    mesh.dimension = (200, 100, 60)
-    mesh_filter = openmc.MeshFilter(mesh)
-       # gdose coefficients
-    genergy_bins, gdose_coeffs = openmc.data.dose_coefficients(
-        particle='photon', geometry='ISO')
-    gdose_filter = openmc.EnergyFunctionFilter(genergy_bins, gdose_coeffs)
+    # # mesh
+    # photon_filter = openmc.ParticleFilter(["photon"])
+    # mesh = openmc.RegularMesh()
+    # mesh.lower_left = (0, 0, 0)
+    # mesh.upper_right = (1000, 500, 300)
+    # mesh.dimension = (200, 100, 60)
+    # mesh_filter = openmc.MeshFilter(mesh)
+    #    # gdose coefficients
+    # genergy_bins, gdose_coeffs = openmc.data.dose_coefficients(
+    #     particle='photon', geometry='ISO')
+    # gdose_filter = openmc.EnergyFunctionFilter(genergy_bins, gdose_coeffs)
 
-    # tally906
-    tally = openmc.Tally(tally_id=906, name="gdose_mesh")
-    tally.filters = [photon_filter, gdose_filter, mesh_filter]
-    tally.scores = ['flux']
-    tallies.append(tally)
+    # # tally906
+    # tally = openmc.Tally(tally_id=906, name="gdose_mesh")
+    # tally.filters = [photon_filter, gdose_filter, mesh_filter]
+    # tally.scores = ['flux']
+    # tallies.append(tally)
     
-    # # TBR tally
-    # tbr_tally = openmc.Tally(name="TBR")
-    # tbr_tally.scores = ["(n,Xt)"]
-    # tbr_tally.filters = [openmc.CellFilter(cllif_cell)]
-    # tallies.append(tbr_tally)
+    # TBR tally
+    tbr_tally = openmc.Tally(name="TBR")
+    tbr_tally.scores = ["(n,Xt)"]
+    tbr_tally.filters = [openmc.CellFilter(cllif_cell)]
+    tallies.append(tbr_tally)
 
     # # Multiplication tally
     # tally = openmc.Tally(name="nmult")
@@ -455,12 +456,12 @@ def baby_model():
 
 if __name__ == "__main__":
     model = baby_model()
-    openmc.config['chain_file'] = '/home/segantin/openmc_models/CROSS_SECTIONS/chain_endfb80_sfr.xml'
-    model.settings.use_decay_photons = True
-    model.settings.photon_transport = True
-    d1s.prepare_tallies(model)
-    openmc.config['cross_sections'] = '/home/segantin/openmc_models/CROSS_SECTIONS/endfb81_hdf5/cross_sections.xml'
-    model.run(cwd="d1s_run", threads=16)
+    # openmc.config['chain_file'] = '/home/segantin/openmc_models/CROSS_SECTIONS/chain_endfb80_sfr.xml'
+    # model.settings.use_decay_photons = True
+    # model.settings.photon_transport = True
+    # d1s.prepare_tallies(model)
+    # openmc.config['cross_sections'] = '/home/segantin/openmc_models/CROSS_SECTIONS/endfb81_hdf5/cross_sections.xml'
+    model.run(cwd="li_7_0", threads=16)
     # model.run(geometry_debug=True)
     # sp = openmc.StatePoint(f"statepoint.{model.settings.batches}.h5")
     # tbr_tally = sp.get_tally(name="TBR").get_pandas_dataframe()
