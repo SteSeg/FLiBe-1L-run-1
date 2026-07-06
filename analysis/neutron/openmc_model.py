@@ -2,7 +2,7 @@ import openmc
 from libra_toolbox.neutronics import vault
 from libra_toolbox.neutronics.neutron_source import A325_generator_diamond
 from libra_toolbox.neutronics.materials import *
-from libra_toolbox.neutronics.materials import Flibe_nat
+from libra_toolbox.neutronics.materials import Flibe_nat, Flibe_solid
 
 
 def baby_geometry(x_c: float, y_c: float, z_c: float):
@@ -24,7 +24,8 @@ def baby_geometry(x_c: float, y_c: float, z_c: float):
     he_thickness = 0.6
     inconel_thickness = 0.3
     heater_gap = 0.878
-    cllif_thickness = 6.388 + 0.13022  # without heater: 0.1081 
+    # cllif_thickness = 6.388 + 0.13022  # without heater: 0.1081
+    cllif_thickness = (6.388 + 0.13022) * 1.94/2.18  # if flibe is solid (flibe height goes down) # with heater: 0.1081
     gap_thickness = 4.605
     cap = 1.422
     firebrick_thickness = 15.24
@@ -290,7 +291,7 @@ def baby_geometry(x_c: float, y_c: float, z_c: float):
     alumina_cell = openmc.Cell(region=alumina_region)
     alumina_cell.fill = Alumina
     cllif_cell = openmc.Cell(region=cllif_region)
-    cllif_cell.fill = Flibe_nat  # Cllif or lithium_lead
+    cllif_cell.fill = Flibe_solid  # Cllif or lithium_lead
     gap_cell = openmc.Cell(region=gap_region)
     gap_cell.fill = Helium
     cap_cell = openmc.Cell(region=cap_region)
@@ -363,6 +364,7 @@ def baby_model():
         Epoxy,
         Helium,
         HDPE,
+        Flibe_solid
     ]
 
     # BABY coordinates
@@ -388,7 +390,7 @@ def baby_model():
     dd_source.energy = openmc.stats.Discrete([2.45e6], [1.0])
     # dd_source.strength = 0.2  # fraction of DD neutrons with respect to DT neutrons
 
-    settings.source = [dd_source]
+    settings.source = [dt_source]
     settings.batches = 100
     settings.inactive = 0
     settings.run_mode = "fixed source"
