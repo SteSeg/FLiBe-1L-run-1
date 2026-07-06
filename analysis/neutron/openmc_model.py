@@ -1,8 +1,9 @@
 import openmc
+from openmc.deplete import d1s
 from libra_toolbox.neutronics import vault
 from libra_toolbox.neutronics.neutron_source import A325_generator_diamond
 from libra_toolbox.neutronics.materials import *
-from libra_toolbox.neutronics.materials import Flibe_nat
+from libra_toolbox.neutronics.materials import Flibe_nat, Flibe_solid
 
 
 def baby_geometry(x_c: float, y_c: float, z_c: float):
@@ -24,7 +25,8 @@ def baby_geometry(x_c: float, y_c: float, z_c: float):
     he_thickness = 0.6
     inconel_thickness = 0.3
     heater_gap = 0.878
-    cllif_thickness = 6.388 + 0.13022  # without heater: 0.1081 
+    # cllif_thickness = 6.388 + 0.13022  # without heater: 0.1081
+    cllif_thickness = (6.388 + 0.1081) * 1.94/2.18  # if flibe is solid (flibe height goes down)
     gap_thickness = 4.605
     cap = 1.422
     firebrick_thickness = 15.24
@@ -290,7 +292,7 @@ def baby_geometry(x_c: float, y_c: float, z_c: float):
     alumina_cell = openmc.Cell(region=alumina_region)
     alumina_cell.fill = Alumina
     cllif_cell = openmc.Cell(region=cllif_region)
-    cllif_cell.fill = Flibe_nat  # Cllif or lithium_lead
+    cllif_cell.fill = Flibe_solid  # Cllif or lithium_lead
     gap_cell = openmc.Cell(region=gap_region)
     gap_cell.fill = Helium
     cap_cell = openmc.Cell(region=cap_region)
@@ -363,6 +365,7 @@ def baby_model():
         Epoxy,
         Helium,
         HDPE,
+        Flibe_solid
     ]
 
     # BABY coordinates
@@ -388,7 +391,7 @@ def baby_model():
     dd_source.energy = openmc.stats.Discrete([2.45e6], [1.0])
     # dd_source.strength = 0.2  # fraction of DD neutrons with respect to DT neutrons
 
-    settings.source = [dd_source]
+    settings.source = [dt_source]
     settings.batches = 100
     settings.inactive = 0
     settings.run_mode = "fixed source"
@@ -403,23 +406,41 @@ def baby_model():
     # Specify Tallies
     tallies = openmc.Tallies()
 
-    # TBR tally
-    tbr_tally = openmc.Tally(name="TBR")
-    tbr_tally.scores = ["(n,Xt)"]
-    tbr_tally.filters = [openmc.CellFilter(cllif_cell)]
-    tallies.append(tbr_tally)
+    # mesh
+    photon_filter = openmc.ParticleFilter(["photon"])
+    mesh = openmc.RegularMesh()
+    mesh.lower_left = (0, 0, 0)
+    mesh.upper_right = (1000, 500, 300)
+    mesh.dimension = (200, 100, 60)
+    mesh_filter = openmc.MeshFilter(mesh)
+       # gdose coefficients
+    genergy_bins, gdose_coeffs = openmc.data.dose_coefficients(
+        particle='photon', geometry='ISO')
+    gdose_filter = openmc.EnergyFunctionFilter(genergy_bins, gdose_coeffs)
 
-    # Multiplication tally
-    tally = openmc.Tally(name="nmult")
-    tally.filters = [openmc.CellFilter(cllif_cell)]
-    tally.scores = ["(n,2n)"]
+    # tally906
+    tally = openmc.Tally(tally_id=906, name="gdose_mesh")
+    tally.filters = [photon_filter, gdose_filter, mesh_filter]
+    tally.scores = ['flux']
     tallies.append(tally)
+    
+    # # TBR tally
+    # tbr_tally = openmc.Tally(name="TBR")
+    # tbr_tally.scores = ["(n,Xt)"]
+    # tbr_tally.filters = [openmc.CellFilter(cllif_cell)]
+    # tallies.append(tbr_tally)
 
-    # TBR from multiplied neutrons
-    tally = openmc.Tally(name="TBR_multiplied")
-    tally.filters = [openmc.CellFilter(cllif_cell), openmc.CellBornFilter(cllif_cell)]
-    tally.scores = ["(n,Xt)"]
-    tallies.append(tally)
+    # # Multiplication tally
+    # tally = openmc.Tally(name="nmult")
+    # tally.filters = [openmc.CellFilter(cllif_cell)]
+    # tally.scores = ["(n,2n)"]
+    # tallies.append(tally)
+
+    # # TBR from multiplied neutrons
+    # tally = openmc.Tally(name="TBR_multiplied")
+    # tally.filters = [openmc.CellFilter(cllif_cell), openmc.CellBornFilter(cllif_cell)]
+    # tally.scores = ["(n,Xt)"]
+    # tallies.append(tally)
 
     model = vault.build_vault_model(
         settings=settings,
@@ -434,34 +455,40 @@ def baby_model():
 
 if __name__ == "__main__":
     model = baby_model()
-    model.run(geometry_debug=True)
-    sp = openmc.StatePoint(f"statepoint.{model.settings.batches}.h5")
-    tbr_tally = sp.get_tally(name="TBR").get_pandas_dataframe()
+    openmc.config['chain_file'] = '/home/segantin/openmc_models/CROSS_SECTIONS/chain_endfb80_sfr.xml'
+    model.settings.use_decay_photons = True
+    model.settings.photon_transport = True
+    d1s.prepare_tallies(model)
+    openmc.config['cross_sections'] = '/home/segantin/openmc_models/CROSS_SECTIONS/endfb81_hdf5/cross_sections.xml'
+    model.run(cwd="d1s_run", threads=16)
+    # model.run(geometry_debug=True)
+    # sp = openmc.StatePoint(f"statepoint.{model.settings.batches}.h5")
+    # tbr_tally = sp.get_tally(name="TBR").get_pandas_dataframe()
 
-    print(f"TBR: {tbr_tally['mean'].iloc[0]:.6e}\n")
-    print(f"TBR std. dev.: {tbr_tally['std. dev.'].iloc[0]:.6e}\n")
+    # print(f"TBR: {tbr_tally['mean'].iloc[0]:.6e}\n")
+    # print(f"TBR std. dev.: {tbr_tally['std. dev.'].iloc[0]:.6e}\n")
 
-    processed_data = {
-        "modelled_TBR": {
-            "mean": tbr_tally["mean"].iloc[0],
-            "std_dev": tbr_tally["std. dev."].iloc[0],
-        }
-    }
+    # processed_data = {
+    #     "modelled_TBR": {
+    #         "mean": tbr_tally["mean"].iloc[0],
+    #         "std_dev": tbr_tally["std. dev."].iloc[0],
+    #     }
+    # }
 
-    import json
+    # import json
 
-    processed_data_file = "../../data/processed_data.json"
+    # processed_data_file = "../../data/processed_data.json"
 
-    try:
-        with open(processed_data_file, "r") as f:
-            existing_data = json.load(f)
-    except FileNotFoundError:
-        print(f"Processed data file not found, creating it in {processed_data_file}")
-        existing_data = {}
+    # try:
+    #     with open(processed_data_file, "r") as f:
+    #         existing_data = json.load(f)
+    # except FileNotFoundError:
+    #     print(f"Processed data file not found, creating it in {processed_data_file}")
+    #     existing_data = {}
 
-    existing_data.update(processed_data)
+    # existing_data.update(processed_data)
 
-    with open(processed_data_file, "w") as f:
-        json.dump(existing_data, f, indent=4)
+    # with open(processed_data_file, "w") as f:
+    #     json.dump(existing_data, f, indent=4)
 
-    print(f"Processed data stored in {processed_data_file}")
+    # print(f"Processed data stored in {processed_data_file}")
